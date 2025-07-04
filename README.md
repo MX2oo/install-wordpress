@@ -1,38 +1,53 @@
-Role Name
-=========
+# wordpress_role
 
-A brief description of the role goes here.
+## Description
 
-Requirements
-------------
+Ce rôle Ansible installe et configure un environnement WordPress complet sur un serveur Debian/Ubuntu ou Rocky Linux.  
+Il gère l’installation des prérequis (Apache, PHP, MariaDB, etc.), la configuration et sécurisation de MariaDB, le téléchargement et la mise en place de WordPress, ainsi que la configuration d’Apache pour servir WordPress via un VirtualHost.
 
-Any pre-requisites that may not be covered by Ansible itself or the role should be mentioned here. For instance, if the role uses the EC2 module, it may be a good idea to mention in this section that the boto package is required.
+---
 
-Role Variables
---------------
+## Prérequis
 
-A description of the settable variables for this role should go here, including any variables that are in defaults/main.yml, vars/main.yml, and any variables that can/should be set via parameters to the role. Any variables that are read from other roles and/or the global scope (ie. hostvars, group vars, etc.) should be mentioned here as well.
+- Serveur Debian/Ubuntu ou Rocky Linux accessible avec privilèges sudo.
+- MariaDB nativement réinitialisé par le playbook inclus (`database.yml`).
+- Accès réseau au serveur sur le port 80 (Apache).
+- Python installé sur la cible (pour Ansible).
 
-Dependencies
-------------
+---
 
-A list of other roles hosted on Galaxy should go here, plus any details in regards to parameters that may need to be set for other roles, or variables that are used from other roles.
+## Variables
 
-Example Playbook
-----------------
+Ces variables sont définies dans `defaults/main.yml` et peuvent être surchargées dans l’inventaire ou `vars/main.yml` :
 
-Including an example of how to use your role (for instance, with variables passed in as parameters) is always nice for users too:
+| Variable              | Valeur par défaut   | Description                                   |
+|-----------------------|--------------------|-----------------------------------------------|
+| `mariadb_root_password`| `examplerootPW`    | Mot de passe pour l’utilisateur root MariaDB |
+| `wp_db_name`          | `wordpress`        | Nom de la base de données WordPress           |
+| `wp_db_user`          | `example`          | Nom d’utilisateur MySQL pour WordPress        |
+| `wp_db_password`      | `examplePW`        | Mot de passe utilisateur MySQL WordPress      |
+| `wp_db_host`          | `localhost`        | Adresse de la base de données (souvent localhost) |
 
-    - hosts: servers
-      roles:
-         - { role: username.rolename, x: 42 }
+---
 
-License
--------
+## Structure du rôle
 
-BSD
-
-Author Information
-------------------
-
-An optional section for the role authors to include contact information, or a website (HTML is not allowed).
+```text
+wordpress_role/
+├── defaults/
+│   └── main.yml           # Variables par défaut
+├── handlers/
+│   └── main.yml           # Handlers (reload/restart Apache)
+├── tasks/
+│   ├── prerequisites.yml  # Installation des paquets nécessaires
+│   ├── database.yml       # Réinitialisation et sécurisation MariaDB
+│   ├── wordpress.yml      # Installation, configuration WordPress, et Apache
+│   └── main.yml           # Point d’entrée qui inclut les autres tâches
+├── vars/
+│   └── main.yml           # Variables spécifiques au rôle (optionnel)
+├── tests/
+│   ├── inventory          # Inventaire pour tests
+│   └── test.yml           # Playbook de test simple
+├── meta/
+│   └── main.yml           # Métadonnées du rôle (compatibilité, dépendances)
+└── README.md              # Documentation du rôle
