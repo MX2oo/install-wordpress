@@ -1,0 +1,28 @@
+- name: Installer prérequis (Debian/Ubuntu)
+  apt:
+    name:
+      - apache2
+      - php
+      - libapache2-mod-php
+      - php-mysql
+      - mariadb-server
+      - wget
+      - unzip
+      - python3-pymysql
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Installer prérequis (Rocky Linux)
+  dnf:
+    name:
+      - httpd
+      - php
+      - php-mysqlnd
+      - mariadb-server
+      - wget
+      - unzip
+      - python3-PyMySQL
+    state: present
+    update_cache: yes
+  when: ansible_os_family == "RedHat"

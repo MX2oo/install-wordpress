@@ -1,0 +1,5 @@
+wp_db_name: wordpress
+wp_db_user: example
+wp_db_password: examplePW
+wp_db_host: localhost
+mariadb_root_password: examplerootPW

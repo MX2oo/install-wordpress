@@ -1,0 +1,186 @@
+# === Installation des outils nécessaires ===
+- name: Installer les outils de gestion de processus (Debian)
+  apt:
+    name: procps
+    state: present
+  when: ansible_os_family == "Debian"
+  become: true
+
+- name: Installer les outils de gestion de processus (Rocky)
+  yum:
+    name: procps-ng
+    state: present
+  when: ansible_os_family == "RedHat"
+  become: true
+
+# === Nettoyage préalable ===
+- name: Supprimer les sockets MariaDB
+  file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /var/run/mysqld/mysqld.sock
+    - /run/mysqld/mysqld.sock
+  ignore_errors: true
+  become: true
+
+- name: Tuer tous les processus MariaDB
+  shell: |
+    for pid in $(ps -ef | grep -E 'mysqld|mysqld_safe' | grep -v grep | awk '{print $2}'); do
+      kill -9 "$pid" || true
+    done
+  ignore_errors: true
+  become: true
+
+- name: Nettoyer les processus zombies mysqld_safe
+  shell: |
+    for pid in $(ps -eo pid,stat,comm | awk '$2 ~ /Z/ && $3 ~ /mysqld_safe/ {print $1}'); do
+      kill -9 "$pid" || true
+    done
+  ignore_errors: true
+  become: true
+
+- name: Supprimer .my.cnf si présent (nettoyage)
+  file:
+    path: /root/.my.cnf
+    state: absent
+  become: true
+
+- name: Supprimer les données MariaDB existantes (reset complet)
+  file:
+    path: /var/lib/mysql
+    state: absent
+  become: true
+
+- name: Recréer le répertoire de données MariaDB
+  file:
+    path: /var/lib/mysql
+    state: directory
+    owner: mysql
+    group: mysql
+    mode: '0755'
+  become: true
+
+# === Réinitialisation de MariaDB ===
+- name: Réinitialiser MariaDB (Debian/Ubuntu)
+  shell: |
+    mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
+  args:
+    creates: /var/lib/mysql/mysql
+  when: ansible_os_family == "Debian"
+  become: true
+
+- name: Réinitialiser MariaDB (Rocky Linux)
+  shell: |
+    mariadb-install-db --user=mysql --basedir=/usr --datadir=/var/lib/mysql
+  args:
+    creates: /var/lib/mysql/mysql
+  when: ansible_os_family == "RedHat"
+  become: true
+
+# === Démarrage manuel de MariaDB ===
+- name: S'assurer que /var/run/mysqld existe (Debian/Ubuntu)
+  file:
+    path: /var/run/mysqld
+    state: directory
+    owner: mysql
+    group: mysql
+    mode: '0755'
+  when: ansible_os_family == "Debian"
+  become: true
+
+- name: Démarrer MariaDB (Debian/Ubuntu)
+  shell: |
+    nohup mysqld_safe --datadir=/var/lib/mysql --socket=/var/run/mysqld/mysqld.sock > /tmp/mariadb.log 2>&1 &
+  args:
+    executable: /bin/bash
+  when: ansible_os_family == "Debian"
+  become: true
+
+- name: Démarrer MariaDB (Rocky Linux)
+  shell: |
+    mkdir -p /run/mysqld
+    chown mysql:mysql /run/mysqld
+    nohup mysqld_safe --datadir=/var/lib/mysql --socket=/run/mysqld/mysqld.sock > /tmp/mariadb.log 2>&1 &
+  args:
+    executable: /bin/bash
+  when: ansible_os_family == "RedHat"
+  become: true
+
+# === Logs MariaDB ===
+- name: Afficher le contenu du log MariaDB (Debian)
+  shell: cat /tmp/mariadb.log || true
+  register: mariadb_log_output
+  when: ansible_os_family == "Debian"
+  changed_when: false
+  failed_when: false
+  become: true
+
+- name: Debug log MariaDB (Debian)
+  debug:
+    var: mariadb_log_output.stdout_lines
+  when: ansible_os_family == "Debian"
+
+# === Attente du socket pour confirmation de démarrage ===
+- name: Attendre le démarrage de MariaDB (Debian/Ubuntu)
+  wait_for:
+    path: /var/run/mysqld/mysqld.sock
+    state: present
+    timeout: 60
+  when: ansible_os_family == "Debian"
+
+- name: Attendre le démarrage de MariaDB (Rocky Linux)
+  wait_for:
+    path: /run/mysqld/mysqld.sock
+    state: present
+    timeout: 60
+  when: ansible_os_family == "RedHat"
+
+# === Sécurisation et configuration ===
+- name: Configurer le mot de passe root MariaDB (Debian/Ubuntu)
+  mysql_user:
+    login_unix_socket: /var/run/mysqld/mysqld.sock
+    user: root
+    password: "{{ mariadb_root_password }}"
+    host: localhost
+  when: ansible_os_family == "Debian"
+
+- name: Configurer le mot de passe root MariaDB (Rocky Linux)
+  mysql_user:
+    login_unix_socket: /run/mysqld/mysqld.sock
+    user: root
+    password: "{{ mariadb_root_password }}"
+    host: localhost
+  when: ansible_os_family == "RedHat"
+
+- name: Supprimer les utilisateurs anonymes
+  mysql_user:
+    login_user: root
+    login_password: "{{ mariadb_root_password }}"
+    user: ""
+    host_all: true
+    state: absent
+
+- name: Supprimer la base de test par défaut
+  mysql_db:
+    login_user: root
+    login_password: "{{ mariadb_root_password }}"
+    name: test
+    state: absent
+
+- name: Créer la base de données WordPress
+  mysql_db:
+    login_user: root
+    login_password: "{{ mariadb_root_password }}"
+    name: "{{ wp_db_name }}"
+    state: present
+
+- name: Créer l'utilisateur WordPress et accorder les privilèges
+  mysql_user:
+    login_user: root
+    login_password: "{{ mariadb_root_password }}"
+    name: "{{ wp_db_user }}"
+    password: "{{ wp_db_password }}"
+    priv: "{{ wp_db_name }}.*:ALL"
+    host: "{{ wp_db_host }}"
+    state: present

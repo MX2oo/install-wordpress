@@ -1,0 +1,83 @@
+---
+- name: Supprimer la page index Apache par défaut
+  file:
+    path: /var/www/html/index.html
+    state: absent
+
+- name: Télécharger WordPress
+  get_url:
+    url: https://wordpress.org/latest.zip
+    dest: /tmp/latest.zip
+
+- name: Décompresser WordPress
+  unarchive:
+    src: /tmp/latest.zip
+    dest: /tmp
+    remote_src: yes
+
+- name: Copier les fichiers WordPress
+  copy:
+    src: /tmp/wordpress/
+    dest: /var/www/html/
+    owner: www-data
+    group: www-data
+    mode: '0755'
+    remote_src: yes
+
+- name: Créer le fichier wp-config.php
+  copy:
+    src: /var/www/html/wp-config-sample.php
+    dest: /var/www/html/wp-config.php
+    remote_src: yes
+    owner: www-data
+    group: www-data
+    mode: '0640'
+
+- name: Configurer le fichier wp-config.php
+  lineinfile:
+    path: /var/www/html/wp-config.php
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+  loop:
+    - { regexp: "define\\( 'DB_NAME', '.*' \\);", line: "define( 'DB_NAME', '{{ wp_db_name }}' );" }
+    - { regexp: "define\\( 'DB_USER', '.*' \\);", line: "define( 'DB_USER', '{{ wp_db_user }}' );" }
+    - { regexp: "define\\( 'DB_PASSWORD', '.*' \\);", line: "define( 'DB_PASSWORD', '{{ wp_db_password }}' );" }
+    - { regexp: "define\\( 'DB_HOST', '.*' \\);", line: "define( 'DB_HOST', '{{ wp_db_host }}' );" }
+
+- name: Créer un vhost Apache pour WordPress
+  copy:
+    dest: /etc/apache2/sites-available/wordpress.conf
+    content: |
+      <VirtualHost *:80>
+          ServerAdmin admin@localhost
+          DocumentRoot /var/www/html
+          <Directory /var/www/html>
+              AllowOverride All
+          </Directory>
+          ErrorLog ${APACHE_LOG_DIR}/error.log
+          CustomLog ${APACHE_LOG_DIR}/access.log combined
+      </VirtualHost>
+  notify: Redémarrer Apache
+
+
+- name: Activer le site WordPress
+  command: a2ensite wordpress.conf
+  notify: Redémarrer Apache
+
+- name: Activer le module rewrite
+  command: a2enmod rewrite
+  notify: Redémarrer Apache
+
+- name: Redémarrer Apache pour prendre en compte les changements
+  service:
+    name: apache2
+    state: restarted
+
+- name: Tester WordPress via curl
+  command: "curl -I http://localhost:{{ wordpress_port | default('80') }}"
+  register: curl_result
+  ignore_errors: yes
+
+- name: Afficher le résultat curl
+  debug:
+    var: curl_result.stdout_lines
